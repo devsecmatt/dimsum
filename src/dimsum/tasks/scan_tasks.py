@@ -170,15 +170,14 @@ def _build_context(scan) -> "ScanContext":
             context.asvs_level = config.asvs_level
             context.enabled_plugin_ids = config.enabled_plugins or []
 
-    # Load source analysis data when enabled
-    if config and getattr(config, "enable_source_analysis", False):
-        _load_source_analysis(scan.project_id, context)
+    # Always load source analysis data when available
+    _load_source_analysis(scan.project_id, context)
 
     return context
 
 
 def _load_source_analysis(project_id, context) -> None:
-    """Load extracted routes and parameters from completed source analysis."""
+    """Load extracted routes, parameters, and risk indicators from completed source analysis."""
     from dimsum.extensions import db
     from dimsum.models.source_upload import SourceUpload
 
@@ -191,6 +190,7 @@ def _load_source_analysis(project_id, context) -> None:
     for upload in uploads:
         context.extracted_parameters.extend(upload.extracted_params or [])
         context.extracted_routes.extend(upload.extracted_routes or [])
+        context.risk_indicators.extend(upload.risk_indicators or [])
 
     # Convert extracted routes to discovered endpoints using target base URLs
     if context.target_urls and context.extracted_routes:

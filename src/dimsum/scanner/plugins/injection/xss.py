@@ -10,7 +10,7 @@ import secrets
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 from dimsum.scanner.base_plugin import BaseScanPlugin
-from dimsum.scanner.payloads import XSS_BASIC_PAYLOADS, XSS_CANARY_PREFIX
+from dimsum.scanner.payloads import XSS_CANARY_PREFIX
 from dimsum.scanner.registry import PluginRegistry
 from dimsum.scanner.result import Confidence, ScanFinding, Severity
 
@@ -28,6 +28,7 @@ class ReflectedXSSPlugin(BaseScanPlugin):
 
     async def run(self) -> list[ScanFinding]:
         findings: list[ScanFinding] = []
+        generator = self.get_payload_generator()
 
         for url in self.get_target_urls():
             parsed = urlparse(url)
@@ -35,7 +36,10 @@ class ReflectedXSSPlugin(BaseScanPlugin):
 
             if not params:
                 # No query parameters — try reflected canary in common param names
-                params = {p: [""] for p in ("q", "search", "query", "id", "page", "name", "input")}
+                default_params = ["q", "search", "query", "id", "page", "name", "input"]
+                # Also include parameters discovered from source analysis
+                default_params.extend(generator.get_discovered_params())
+                params = {p: [""] for p in set(default_params)}
 
             for param_name in params:
                 # Phase 1: Canary test — check if the parameter value is reflected
@@ -47,8 +51,8 @@ class ReflectedXSSPlugin(BaseScanPlugin):
 
                 self.log("Parameter '%s' reflects input on %s", param_name, url)
 
-                # Phase 2: Try actual XSS payloads
-                for payload in XSS_BASIC_PAYLOADS:
+                # Phase 2: Try context-aware XSS payloads
+                for payload in generator.get_xss_payloads(param_name, url):
                     test_url = self._inject_param(url, param_name, payload)
                     resp = await self.http.get(test_url)
                     if resp is None:

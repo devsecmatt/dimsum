@@ -9,7 +9,7 @@ from __future__ import annotations
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 from dimsum.scanner.base_plugin import BaseScanPlugin
-from dimsum.scanner.payloads import CMDI_INDICATORS, CMDI_PAYLOADS
+from dimsum.scanner.payloads import CMDI_INDICATORS
 from dimsum.scanner.registry import PluginRegistry
 from dimsum.scanner.result import Confidence, ScanFinding, Severity
 
@@ -27,13 +27,16 @@ class CommandInjectionPlugin(BaseScanPlugin):
 
     async def run(self) -> list[ScanFinding]:
         findings: list[ScanFinding] = []
+        generator = self.get_payload_generator()
 
         for url in self.get_target_urls():
             parsed = urlparse(url)
             params = parse_qs(parsed.query, keep_blank_values=True)
 
             if not params:
-                params = {p: ["test"] for p in ("cmd", "exec", "command", "file", "path", "dir", "host", "ip")}
+                default_params = ["cmd", "exec", "command", "file", "path", "dir", "host", "ip"]
+                default_params.extend(generator.get_discovered_params())
+                params = {p: ["test"] for p in set(default_params)}
 
             for param_name in params:
                 # Get baseline
@@ -46,7 +49,7 @@ class CommandInjectionPlugin(BaseScanPlugin):
                 if self._has_cmd_output(baseline.text):
                     continue
 
-                for payload in CMDI_PAYLOADS:
+                for payload in generator.get_cmdi_payloads(param_name, url):
                     test_url = self._inject_param(url, param_name, payload)
                     resp = await self.http.get(test_url)
                     if resp is None:

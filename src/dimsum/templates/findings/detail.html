@@ -1,6 +1,273 @@
 {% extends "base.html" %}
 {% block title %}Finding Detail{% endblock %}
 {% block content %}
-<div class="page-header"><h1>Finding {{ finding_id }}</h1></div>
-<div class="card"><div class="card-body"><p>Finding details will be displayed here.</p></div></div>
+<div class="page-header">
+    <h1 id="finding-title">Loading...</h1>
+    <div class="page-actions">
+        <a href="#" id="back-to-scan" class="btn btn-secondary" style="display:none;">Back to Scan</a>
+    </div>
+</div>
+
+<!-- Overview Stats -->
+<div class="card" id="overview-card">
+    <div class="card-header"><h3>Overview</h3></div>
+    <div class="card-body">
+        <div class="stats-grid">
+            <div class="stat-card" id="stat-severity-card">
+                <div class="stat-value" id="stat-severity">—</div>
+                <div class="stat-label">Severity</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="stat-confidence">—</div>
+                <div class="stat-label">Confidence</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="stat-cwe">—</div>
+                <div class="stat-label">CWE ID</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="stat-cvss">—</div>
+                <div class="stat-label">CVSS Score</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Request Details -->
+<div class="card">
+    <div class="card-header"><h3>Request Details</h3></div>
+    <div class="card-body">
+        <table class="table">
+            <tbody>
+                <tr><td><strong>URL</strong></td><td id="detail-url">—</td></tr>
+                <tr><td><strong>Method</strong></td><td id="detail-method">—</td></tr>
+                <tr><td><strong>Parameter</strong></td><td id="detail-parameter">—</td></tr>
+                <tr><td><strong>Plugin</strong></td><td id="detail-plugin">—</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Description -->
+<div class="card" id="description-card" style="display:none;">
+    <div class="card-header"><h3>Description</h3></div>
+    <div class="card-body">
+        <p id="detail-description"></p>
+    </div>
+</div>
+
+<!-- Payload & Evidence -->
+<div class="card" id="evidence-card" style="display:none;">
+    <div class="card-header"><h3>Payload & Evidence</h3></div>
+    <div class="card-body">
+        <div id="payload-section" style="display:none;">
+            <h4 style="margin-bottom:0.5rem;">Payload</h4>
+            <pre style="background:var(--bg-dark,#1a1a2e);color:var(--text-primary,#e0e0e0);padding:1rem;border-radius:6px;overflow-x:auto;"><code id="detail-payload"></code></pre>
+        </div>
+        <div id="evidence-section" style="display:none;margin-top:1rem;">
+            <h4 style="margin-bottom:0.5rem;">Evidence</h4>
+            <pre style="background:var(--bg-dark,#1a1a2e);color:var(--text-primary,#e0e0e0);padding:1rem;border-radius:6px;overflow-x:auto;white-space:pre-wrap;"><code id="detail-evidence"></code></pre>
+        </div>
+    </div>
+</div>
+
+<!-- HTTP Request/Response -->
+<div class="card" id="http-card" style="display:none;">
+    <div class="card-header"><h3>HTTP Details</h3></div>
+    <div class="card-body">
+        <div id="request-section" style="display:none;">
+            <h4 style="margin-bottom:0.5rem;">Request</h4>
+            <pre style="background:var(--bg-dark,#1a1a2e);color:var(--text-primary,#e0e0e0);padding:1rem;border-radius:6px;overflow-x:auto;max-height:400px;"><code id="detail-request"></code></pre>
+        </div>
+        <div id="response-section" style="display:none;margin-top:1rem;">
+            <h4 style="margin-bottom:0.5rem;">Response</h4>
+            <pre style="background:var(--bg-dark,#1a1a2e);color:var(--text-primary,#e0e0e0);padding:1rem;border-radius:6px;overflow-x:auto;max-height:400px;"><code id="detail-response"></code></pre>
+        </div>
+    </div>
+</div>
+
+<!-- Remediation -->
+<div class="card" id="remediation-card" style="display:none;">
+    <div class="card-header"><h3>Remediation</h3></div>
+    <div class="card-body">
+        <p id="detail-remediation"></p>
+    </div>
+</div>
+
+<!-- Source Code Reference -->
+<div class="card" id="source-card" style="display:none;">
+    <div class="card-header"><h3>Source Code Reference</h3></div>
+    <div class="card-body">
+        <p><strong>File:</strong> <code id="detail-source-file"></code></p>
+        <p id="source-line-row" style="display:none;"><strong>Line:</strong> <code id="detail-source-line"></code></p>
+    </div>
+</div>
+
+<!-- Notes & Triage -->
+<div class="card">
+    <div class="card-header"><h3>Triage</h3></div>
+    <div class="card-body">
+        <div class="form-group">
+            <label>
+                <input type="checkbox" id="triage-fp" onchange="toggleFalsePositive()">
+                Mark as false positive
+            </label>
+        </div>
+        <div class="form-group" style="margin-top:1rem;">
+            <label for="triage-notes">Notes</label>
+            <textarea id="triage-notes" class="form-control" rows="3" placeholder="Add notes about this finding..."></textarea>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="saveNotes()" style="margin-top:0.5rem;">Save Notes</button>
+        <div id="triage-feedback" class="flash" style="display:none;margin-top:0.5rem;"></div>
+    </div>
+</div>
+
+<script>
+const FINDING_ID = "{{ finding_id }}";
+
+function escapeHtml(s) {
+    if (!s) return '';
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function severityColor(s) {
+    return {critical:'danger',high:'warning',medium:'info',low:'secondary',info:'secondary'}[s] || 'secondary';
+}
+
+function severityBorder(s) {
+    return {critical:'#dc3545',high:'#fd7e14',medium:'#ffc107',low:'#17a2b8',info:'#6c757d'}[s] || '#6c757d';
+}
+
+async function loadFinding() {
+    try {
+        const resp = await fetch(`/api/findings/${FINDING_ID}`);
+        if (!resp.ok) {
+            document.getElementById('finding-title').textContent = 'Finding not found';
+            return;
+        }
+        const f = await resp.json();
+        renderFinding(f);
+    } catch (err) {
+        console.error('Failed to load finding:', err);
+        document.getElementById('finding-title').textContent = 'Error loading finding';
+    }
+}
+
+function renderFinding(f) {
+    // Title
+    document.getElementById('finding-title').innerHTML =
+        `<span class="badge badge-${severityColor(f.severity)}" style="margin-right:0.5rem;">${escapeHtml(f.severity)}</span> ${escapeHtml(f.title)}`;
+
+    // Back link
+    const backLink = document.getElementById('back-to-scan');
+    backLink.href = `/findings/?scan_id=${f.scan_id}`;
+    backLink.style.display = '';
+
+    // Stats
+    document.getElementById('stat-severity').textContent = f.severity;
+    document.getElementById('stat-severity-card').style.borderLeft = `4px solid ${severityBorder(f.severity)}`;
+    document.getElementById('stat-confidence').textContent = f.confidence || '—';
+    document.getElementById('stat-cwe').innerHTML = f.cwe_id
+        ? `<a href="https://cwe.mitre.org/data/definitions/${f.cwe_id}.html" target="_blank" rel="noopener">${f.cwe_id}</a>`
+        : '—';
+    document.getElementById('stat-cvss').textContent = f.cvss_score != null ? f.cvss_score.toFixed(1) : '—';
+
+    // Request details
+    document.getElementById('detail-url').textContent = f.url || '—';
+    document.getElementById('detail-method').textContent = f.method || '—';
+    document.getElementById('detail-parameter').textContent = f.parameter || '—';
+    document.getElementById('detail-plugin').textContent = f.plugin_id || '—';
+
+    // Description
+    if (f.description) {
+        document.getElementById('description-card').style.display = '';
+        document.getElementById('detail-description').textContent = f.description;
+    }
+
+    // Payload & Evidence
+    const hasPayload = f.payload;
+    const hasEvidence = f.evidence;
+    if (hasPayload || hasEvidence) {
+        document.getElementById('evidence-card').style.display = '';
+        if (hasPayload) {
+            document.getElementById('payload-section').style.display = '';
+            document.getElementById('detail-payload').textContent = f.payload;
+        }
+        if (hasEvidence) {
+            document.getElementById('evidence-section').style.display = '';
+            document.getElementById('detail-evidence').textContent = f.evidence;
+        }
+    }
+
+    // HTTP details
+    const hasRequest = f.request_dump;
+    const hasResponse = f.response_dump;
+    if (hasRequest || hasResponse) {
+        document.getElementById('http-card').style.display = '';
+        if (hasRequest) {
+            document.getElementById('request-section').style.display = '';
+            document.getElementById('detail-request').textContent = f.request_dump;
+        }
+        if (hasResponse) {
+            document.getElementById('response-section').style.display = '';
+            document.getElementById('detail-response').textContent = f.response_dump;
+        }
+    }
+
+    // Remediation
+    if (f.remediation) {
+        document.getElementById('remediation-card').style.display = '';
+        document.getElementById('detail-remediation').textContent = f.remediation;
+    }
+
+    // Source code reference
+    if (f.source_file) {
+        document.getElementById('source-card').style.display = '';
+        document.getElementById('detail-source-file').textContent = f.source_file;
+        if (f.source_line) {
+            document.getElementById('source-line-row').style.display = '';
+            document.getElementById('detail-source-line').textContent = f.source_line;
+        }
+    }
+
+    // Triage
+    document.getElementById('triage-fp').checked = f.is_false_positive;
+    document.getElementById('triage-notes').value = f.notes || '';
+}
+
+async function toggleFalsePositive() {
+    const checked = document.getElementById('triage-fp').checked;
+    await patchFinding({is_false_positive: checked});
+}
+
+async function saveNotes() {
+    const notes = document.getElementById('triage-notes').value;
+    await patchFinding({notes: notes});
+}
+
+async function patchFinding(data) {
+    const fb = document.getElementById('triage-feedback');
+    try {
+        const resp = await fetch(`/api/findings/${FINDING_ID}`, {
+            method: 'PATCH',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data),
+        });
+        if (resp.ok) {
+            fb.textContent = 'Saved.';
+            fb.className = 'flash flash-success';
+        } else {
+            fb.textContent = 'Failed to save.';
+            fb.className = 'flash flash-error';
+        }
+    } catch (err) {
+        fb.textContent = 'Error saving.';
+        fb.className = 'flash flash-error';
+    }
+    fb.style.display = 'block';
+    setTimeout(() => fb.style.display = 'none', 3000);
+}
+
+loadFinding();
+</script>
 {% endblock %}

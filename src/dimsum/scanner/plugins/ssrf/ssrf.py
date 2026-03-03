@@ -9,7 +9,6 @@ from __future__ import annotations
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 from dimsum.scanner.base_plugin import BaseScanPlugin
-from dimsum.scanner.payloads import SSRF_INTERNAL_URLS
 from dimsum.scanner.registry import PluginRegistry
 from dimsum.scanner.result import Confidence, ScanFinding, Severity
 
@@ -45,6 +44,7 @@ class SSRFPlugin(BaseScanPlugin):
 
     async def run(self) -> list[ScanFinding]:
         findings: list[ScanFinding] = []
+        generator = self.get_payload_generator()
 
         for url in self.get_target_urls():
             parsed = urlparse(url)
@@ -59,7 +59,7 @@ class SSRFPlugin(BaseScanPlugin):
                 continue
 
             for param_name in target_params:
-                for ssrf_url in SSRF_INTERNAL_URLS:
+                for ssrf_url in generator.get_ssrf_payloads(param_name, url):
                     test_url = self._inject_param(url, param_name, ssrf_url)
                     resp = await self.http.get(test_url)
                     if resp is None:

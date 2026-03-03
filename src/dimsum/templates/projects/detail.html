@@ -14,6 +14,7 @@
     <button class="tab active" data-tab="targets">Targets ({{ project.targets | length }})</button>
     <button class="tab" data-tab="scans">Scans ({{ project.scans | length }})</button>
     <button class="tab" data-tab="config">Configuration</button>
+    <button class="tab" data-tab="source">Source Code</button>
 </div>
 
 <!-- Targets Tab -->
@@ -121,6 +122,83 @@
             {% else %}
             <p class="empty-state">No scans run yet. Add targets and launch a scan.</p>
             {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Source Code Tab -->
+<div class="tab-content" id="tab-source">
+    <div class="card">
+        <div class="card-header"><h2>GitHub Repository Analysis</h2></div>
+        <div class="card-body">
+            <form id="source-repo-form" class="inline-form">
+                <div class="form-row">
+                    <input type="text" id="repo-url" class="form-control form-control-sm"
+                           placeholder="https://github.com/owner/repo" required style="flex:2;">
+                    <input type="text" id="repo-branch" class="form-control form-control-sm"
+                           placeholder="Branch (default: main)" style="flex:1;">
+                    <button type="submit" class="btn btn-primary btn-sm" id="btn-analyze">Analyze</button>
+                </div>
+            </form>
+            <div id="source-feedback" class="flash" style="display:none;margin-top:0.5rem;"></div>
+        </div>
+    </div>
+
+    <!-- Results Summary -->
+    <div class="card" id="source-results-card" style="display:none;margin-top:1rem;">
+        <div class="card-header"><h2>Analysis Results</h2></div>
+        <div class="card-body">
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-value" id="src-files-count">0</div>
+                    <div class="stat-label">Files Analyzed</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="src-routes-count">0</div>
+                    <div class="stat-label">Routes Found</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="src-params-count">0</div>
+                    <div class="stat-label">Parameters Found</div>
+                </div>
+                <div class="stat-card" style="border-left:4px solid #fd7e14;">
+                    <div class="stat-value" id="src-risks-count">0</div>
+                    <div class="stat-label">Risk Indicators</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Routes -->
+    <div class="card" id="source-routes-card" style="display:none;margin-top:1rem;">
+        <div class="card-header"><h2>Discovered Routes</h2></div>
+        <div class="card-body">
+            <table class="table">
+                <thead><tr><th>Path</th><th>Methods</th><th>File</th></tr></thead>
+                <tbody id="source-routes-tbody"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Parameters -->
+    <div class="card" id="source-params-card" style="display:none;margin-top:1rem;">
+        <div class="card-header"><h2>Discovered Parameters</h2></div>
+        <div class="card-body">
+            <table class="table">
+                <thead><tr><th>Name</th><th>Source</th><th>Type</th><th>File</th></tr></thead>
+                <tbody id="source-params-tbody"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Risk Indicators -->
+    <div class="card" id="source-risks-card" style="display:none;margin-top:1rem;">
+        <div class="card-header"><h2>Risk Indicators</h2></div>
+        <div class="card-body">
+            <table class="table">
+                <thead><tr><th>Type</th><th>Description</th><th>File</th><th>Occurrences</th></tr></thead>
+                <tbody id="source-risks-tbody"></tbody>
+            </table>
         </div>
     </div>
 </div>
@@ -272,6 +350,100 @@ async function launchScan() {
     } else {
         const data = await resp.json().catch(() => ({}));
         alert(data.error || 'Failed to launch scan');
+    }
+}
+
+// Source code analysis
+document.getElementById('source-repo-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const repoUrl = document.getElementById('repo-url').value.trim();
+    const branch = document.getElementById('repo-branch').value.trim() || 'main';
+    if (!repoUrl) return;
+
+    const fb = document.getElementById('source-feedback');
+    const btn = document.getElementById('btn-analyze');
+    btn.disabled = true;
+    btn.textContent = 'Analyzing...';
+    fb.textContent = 'Cloning repository and analyzing source code...';
+    fb.className = 'flash flash-info';
+    fb.style.display = 'block';
+
+    try {
+        const resp = await fetch(`/api/projects/${PROJECT_ID}/source/upload`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({repo_url: repoUrl, branch: branch}),
+        });
+        const data = await resp.json();
+        if (resp.ok) {
+            fb.textContent = data.message;
+            fb.className = 'flash flash-success';
+            renderSourceResults(data);
+        } else {
+            fb.textContent = data.error || 'Analysis failed';
+            fb.className = 'flash flash-error';
+        }
+    } catch (err) {
+        fb.textContent = 'Error analyzing repository.';
+        fb.className = 'flash flash-error';
+    }
+    btn.disabled = false;
+    btn.textContent = 'Analyze';
+});
+
+function escapeHtml(s) {
+    if (!s) return '';
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function renderSourceResults(data) {
+    document.getElementById('source-results-card').style.display = '';
+    document.getElementById('src-files-count').textContent = data.files_analyzed || 0;
+    document.getElementById('src-routes-count').textContent = data.routes_found || 0;
+    document.getElementById('src-params-count').textContent = data.parameters_found || 0;
+    document.getElementById('src-risks-count').textContent = data.risk_indicators_found || 0;
+
+    if (data.routes && data.routes.length > 0) {
+        document.getElementById('source-routes-card').style.display = '';
+        document.getElementById('source-routes-tbody').innerHTML = data.routes.map(r =>
+            `<tr><td><code>${escapeHtml(r.path)}</code></td><td>${(r.methods||[]).join(', ')}</td><td>${escapeHtml(r.file)}</td></tr>`
+        ).join('');
+    }
+
+    if (data.parameters && data.parameters.length > 0) {
+        document.getElementById('source-params-card').style.display = '';
+        document.getElementById('source-params-tbody').innerHTML = data.parameters.map(p =>
+            `<tr><td><code>${escapeHtml(p.name)}</code></td><td>${escapeHtml(p.source||'')}</td><td>${escapeHtml(p.type||'—')}</td><td>${escapeHtml(p.file)}</td></tr>`
+        ).join('');
+    }
+
+    if (data.risk_indicators && data.risk_indicators.length > 0) {
+        document.getElementById('source-risks-card').style.display = '';
+        document.getElementById('source-risks-tbody').innerHTML = data.risk_indicators.map(r =>
+            `<tr><td><span class="badge badge-warning">${escapeHtml(r.type)}</span></td><td>${escapeHtml(r.description)}</td><td>${escapeHtml(r.file)}</td><td>${r.count || 1}</td></tr>`
+        ).join('');
+    }
+}
+
+// Load existing source analysis results on tab switch
+async function loadSourceResults() {
+    try {
+        const resp = await fetch(`/api/projects/${PROJECT_ID}/source/results`);
+        if (!resp.ok) return;
+        const data = await resp.json();
+        if (data.routes.length > 0 || data.parameters.length > 0 || data.risk_indicators.length > 0) {
+            renderSourceResults({
+                files_analyzed: '—',
+                routes_found: data.routes.length,
+                parameters_found: data.parameters.length,
+                risk_indicators_found: data.risk_indicators.length,
+                routes: data.routes,
+                parameters: data.parameters,
+                risk_indicators: data.risk_indicators,
+            });
+        }
+    } catch (err) {
+        console.error('Failed to load source results:', err);
     }
 }
 

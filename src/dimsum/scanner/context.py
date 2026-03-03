@@ -27,6 +27,9 @@ class ScanContext:
     extracted_parameters: list[dict[str, Any]] = field(default_factory=list)
     extracted_routes: list[dict[str, Any]] = field(default_factory=list)
 
+    # Risk indicators from source analysis
+    risk_indicators: list[dict[str, Any]] = field(default_factory=list)
+
     # Configuration
     max_concurrency: int = 10
     request_delay_ms: int = 100

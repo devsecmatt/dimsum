@@ -57,6 +57,14 @@ class BaseScanPlugin(abc.ABC):
                 result.append(ep)
         return result
 
+    def get_payload_generator(self):
+        """Create a PayloadGenerator with context from source analysis."""
+        from dimsum.scanner.payload_generator import PayloadGenerator
+        return PayloadGenerator(
+            extracted_parameters=self.context.extracted_parameters,
+            risk_indicators=self.context.risk_indicators,
+        )
+
     def log(self, msg: str, *args) -> None:
         """Log a message scoped to this plugin."""
         import logging

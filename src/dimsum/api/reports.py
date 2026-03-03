@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 
 from flask import Blueprint, Response, jsonify, request
-from flask_login import login_required
+from flask_login import current_user, login_required
 
 from dimsum.extensions import db
 from dimsum.models.finding import Finding
@@ -39,6 +39,10 @@ def generate_report():
 
     scan = db.session.get(Scan, sid)
     if scan is None:
+        return jsonify({"error": "Scan not found"}), 404
+
+    # Verify ownership
+    if scan.project.owner_id != current_user.id:
         return jsonify({"error": "Scan not found"}), 404
 
     findings_orm = db.session.execute(
