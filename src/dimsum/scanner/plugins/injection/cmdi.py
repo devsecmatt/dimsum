@@ -80,6 +80,69 @@ class CommandInjectionPlugin(BaseScanPlugin):
                         ))
                         break
 
+        # Phase 2: Fuzz parameters discovered by source analysis
+        findings.extend(await self._fuzz_extracted_params())
+
+        return findings
+
+    async def _fuzz_extracted_params(self) -> list[ScanFinding]:
+        """Test parameters extracted from source code analysis."""
+        findings: list[ScanFinding] = []
+        extracted = self.get_extracted_params_by_source("query", "body", "path")
+        if not extracted:
+            return findings
+
+        for url in self.get_target_urls():
+            for ep in extracted:
+                param_name = ep["name"]
+                param_source = ep.get("source", "query")
+
+                # Baseline check
+                if param_source == "body":
+                    baseline = await self.http.post(url, data={param_name: "harmless_test_value"})
+                else:
+                    baseline = await self.http.get(self._inject_param(url, param_name, "harmless_test_value"))
+
+                if baseline is None or self._has_cmd_output(baseline.text):
+                    continue
+
+                method = "POST" if param_source == "body" else "GET"
+
+                for payload in CMDI_PAYLOADS:
+                    if param_source == "body":
+                        resp = await self.http.post(url, data={param_name: payload})
+                    else:
+                        resp = await self.http.get(self._inject_param(url, param_name, payload))
+
+                    if resp is None:
+                        continue
+
+                    indicator = self._has_cmd_output(resp.text)
+                    if indicator:
+                        findings.append(ScanFinding(
+                            plugin_id=self.meta.plugin_id,
+                            title=f"OS Command Injection in '{param_name}' parameter (source analysis)",
+                            description=(
+                                f"The parameter '{param_name}' (found via source analysis) appears "
+                                f"vulnerable to OS command injection."
+                            ),
+                            severity=Severity.CRITICAL,
+                            confidence=Confidence.FIRM,
+                            url=url,
+                            method=method,
+                            parameter=param_name,
+                            payload=payload,
+                            evidence=f"Command execution indicator found: {indicator}",
+                            cwe_id=78,
+                            cvss_score=9.8,
+                            remediation=(
+                                "Never pass user input directly to system commands. Use "
+                                "language-specific APIs instead of shell commands."
+                            ),
+                            source_file=ep.get("file", ""),
+                            source_line=ep.get("line"),
+                        ))
+                        break
         return findings
 
     @staticmethod

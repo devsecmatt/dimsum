@@ -184,3 +184,55 @@ def users():
         good_report = analyze_compliance(checks, [], asvs_level=1)
 
         assert good_report.score_percent >= bad_report.score_percent
+
+    def test_source_analysis_generates_fuzz_targets(self):
+        """Source analysis extracts params that can be used as fuzz targets."""
+        code = """
+const express = require('express');
+const app = express();
+app.post('/api/login', (req, res) => {
+    const username = req.body.username;
+    const password = req.body.password;
+    const token = req.query.token;
+    res.json({ok: true});
+});
+app.get('/api/search', (req, res) => {
+    const q = req.query.q;
+    const page = req.query.page;
+});
+"""
+        analysis = analyze_source(code, "server.js")
+
+        # Source analysis should extract parameters
+        param_names = {p.name for p in analysis.parameters}
+        assert "username" in param_names or "q" in param_names
+
+        # Convert to the format ScanContext expects
+        extracted_params = [
+            {"name": p.name, "source": p.source, "file": p.file, "line": p.line}
+            for p in analysis.parameters
+        ]
+
+        # These should be usable by injection plugins via context
+        from dimsum.scanner.context import ScanContext
+        ctx = ScanContext(
+            scan_id=__import__("uuid").uuid4(),
+            target_urls=["http://example.com"],
+            extracted_parameters=extracted_params,
+        )
+
+        assert len(ctx.extracted_parameters) >= 2
+
+        # Extracted routes become discovered endpoints
+        extracted_routes = [
+            {"path": r.path, "method": r.method, "framework": r.framework}
+            for r in analysis.routes
+        ]
+        base = ctx.target_urls[0].rstrip("/")
+        for route in extracted_routes:
+            path = route.get("path", "")
+            if path.startswith("/"):
+                ctx.add_discovered_endpoint(f"{base}{path}")
+
+        assert "http://example.com/api/login" in ctx.discovered_endpoints
+        assert "http://example.com/api/search" in ctx.discovered_endpoints

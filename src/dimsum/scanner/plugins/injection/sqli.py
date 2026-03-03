@@ -118,6 +118,69 @@ class SQLInjectionPlugin(BaseScanPlugin):
                             ))
                             break
 
+        # Phase 3: Fuzz parameters discovered by source analysis
+        findings.extend(await self._fuzz_extracted_params())
+
+        return findings
+
+    async def _fuzz_extracted_params(self) -> list[ScanFinding]:
+        """Test parameters extracted from source code analysis."""
+        findings: list[ScanFinding] = []
+        extracted = self.get_extracted_params_by_source("query", "body", "path")
+        if not extracted:
+            return findings
+
+        for url in self.get_target_urls():
+            for ep in extracted:
+                param_name = ep["name"]
+                param_source = ep.get("source", "query")
+
+                # Baseline check
+                if param_source == "body":
+                    baseline = await self.http.post(url, data={param_name: "1"})
+                else:
+                    baseline = await self.http.get(self._inject_param(url, param_name, "1"))
+
+                if baseline is None or self._has_sql_error(baseline.text):
+                    continue
+
+                method = "POST" if param_source == "body" else "GET"
+
+                for payload in SQLI_ERROR_PAYLOADS:
+                    if param_source == "body":
+                        resp = await self.http.post(url, data={param_name: payload})
+                    else:
+                        resp = await self.http.get(self._inject_param(url, param_name, payload))
+
+                    if resp is None:
+                        continue
+
+                    error_match = self._has_sql_error(resp.text)
+                    if error_match:
+                        findings.append(ScanFinding(
+                            plugin_id=self.meta.plugin_id,
+                            title=f"SQL Injection in '{param_name}' parameter (source analysis)",
+                            description=(
+                                f"The parameter '{param_name}' (found via source analysis) appears "
+                                f"vulnerable to SQL injection."
+                            ),
+                            severity=Severity.CRITICAL,
+                            confidence=Confidence.FIRM,
+                            url=url,
+                            method=method,
+                            parameter=param_name,
+                            payload=payload,
+                            evidence=f"SQL error pattern matched: {error_match}",
+                            cwe_id=89,
+                            cvss_score=9.8,
+                            remediation=(
+                                "Use parameterized queries or prepared statements instead of "
+                                "string concatenation."
+                            ),
+                            source_file=ep.get("file", ""),
+                            source_line=ep.get("line"),
+                        ))
+                        break
         return findings
 
     def _has_sql_error(self, body: str) -> str | None:

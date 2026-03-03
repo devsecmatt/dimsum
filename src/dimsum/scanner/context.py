@@ -23,8 +23,9 @@ class ScanContext:
     # Endpoints discovered by enumeration plugins
     discovered_endpoints: list[str] = field(default_factory=list)
 
-    # Parameters extracted from source analysis
+    # Data extracted from source code analysis
     extracted_parameters: list[dict[str, Any]] = field(default_factory=list)
+    extracted_routes: list[dict[str, Any]] = field(default_factory=list)
 
     # Configuration
     max_concurrency: int = 10

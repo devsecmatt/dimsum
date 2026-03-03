@@ -157,6 +157,7 @@ def _build_context(scan) -> "ScanContext":
             _add_target_to_context(target, context)
 
     # Load config
+    config = None
     if scan.config_id:
         config = db.session.get(ScanConfiguration, scan.config_id)
         if config:
@@ -169,7 +170,44 @@ def _build_context(scan) -> "ScanContext":
             context.asvs_level = config.asvs_level
             context.enabled_plugin_ids = config.enabled_plugins or []
 
+    # Load source analysis data when enabled
+    if config and getattr(config, "enable_source_analysis", False):
+        _load_source_analysis(scan.project_id, context)
+
     return context
+
+
+def _load_source_analysis(project_id, context) -> None:
+    """Load extracted routes and parameters from completed source analysis."""
+    from dimsum.extensions import db
+    from dimsum.models.source_upload import SourceUpload
+
+    uploads = db.session.execute(
+        db.select(SourceUpload).filter_by(
+            project_id=project_id, analysis_status="completed"
+        )
+    ).scalars().all()
+
+    for upload in uploads:
+        context.extracted_parameters.extend(upload.extracted_params or [])
+        context.extracted_routes.extend(upload.extracted_routes or [])
+
+    # Convert extracted routes to discovered endpoints using target base URLs
+    if context.target_urls and context.extracted_routes:
+        base = context.target_urls[0].rstrip("/")
+        for route in context.extracted_routes:
+            path = route.get("path", "")
+            if path.startswith("/"):
+                context.add_discovered_endpoint(f"{base}{path}")
+            elif path.startswith("http"):
+                context.add_discovered_endpoint(path)
+
+    if context.extracted_parameters:
+        logger.info(
+            "Loaded %d parameters and %d routes from source analysis",
+            len(context.extracted_parameters),
+            len(context.extracted_routes),
+        )
 
 
 def _add_target_to_context(target, context) -> None:
