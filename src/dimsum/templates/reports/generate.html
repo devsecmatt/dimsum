@@ -2,5 +2,147 @@
 {% block title %}Reports{% endblock %}
 {% block content %}
 <div class="page-header"><h1>Generate Report</h1></div>
-<div class="card"><div class="card-body"><p>Report generation will be available here.</p></div></div>
+
+<div class="card">
+    <div class="card-header"><h3>Report Configuration</h3></div>
+    <div class="card-body">
+        <div class="form-group">
+            <label for="select-project">Project</label>
+            <select id="select-project" class="form-control" onchange="loadScans()">
+                <option value="">Select a project...</option>
+            </select>
+        </div>
+        <div class="form-group" style="margin-top:1rem;">
+            <label for="select-scan">Scan</label>
+            <select id="select-scan" class="form-control" disabled>
+                <option value="">Select a scan...</option>
+            </select>
+        </div>
+        <div class="form-group" style="margin-top:1rem;">
+            <label>Format</label>
+            <div style="display:flex;gap:1.5rem;margin-top:0.25rem;">
+                <label><input type="radio" name="report-format" value="json" checked> JSON</label>
+                <label><input type="radio" name="report-format" value="csv"> CSV</label>
+            </div>
+        </div>
+        <button class="btn btn-primary" onclick="downloadReport()" style="margin-top:1.5rem;" id="btn-download" disabled>
+            Download Report
+        </button>
+        <div id="report-feedback" class="flash" style="display:none;margin-top:0.5rem;"></div>
+    </div>
+</div>
+
+<script>
+async function loadProjects() {
+    try {
+        const resp = await fetch('/api/projects/');
+        if (!resp.ok) return;
+        const projects = await resp.json();
+        const sel = document.getElementById('select-project');
+        projects.forEach(p => {
+            const opt = document.createElement('option');
+            opt.value = p.id;
+            opt.textContent = p.name;
+            sel.appendChild(opt);
+        });
+    } catch (err) {
+        console.error('Failed to load projects:', err);
+    }
+}
+
+async function loadScans() {
+    const projectId = document.getElementById('select-project').value;
+    const scanSel = document.getElementById('select-scan');
+    const downloadBtn = document.getElementById('btn-download');
+    scanSel.innerHTML = '<option value="">Select a scan...</option>';
+    scanSel.disabled = true;
+    downloadBtn.disabled = true;
+
+    if (!projectId) return;
+
+    try {
+        const resp = await fetch(`/api/projects/${projectId}/scans`);
+        if (!resp.ok) return;
+        const scans = await resp.json();
+        const completed = scans.filter(s => s.status === 'completed');
+
+        if (completed.length === 0) {
+            scanSel.innerHTML = '<option value="">No completed scans</option>';
+            return;
+        }
+
+        scanSel.disabled = false;
+        completed.forEach(s => {
+            const opt = document.createElement('option');
+            opt.value = s.id;
+            const date = new Date(s.created_at).toLocaleDateString();
+            const findings = s.summary_stats?.total_findings || 0;
+            opt.textContent = `${s.scan_type} — ${date} — ${findings} findings`;
+            scanSel.appendChild(opt);
+        });
+
+        scanSel.addEventListener('change', () => {
+            downloadBtn.disabled = !scanSel.value;
+        });
+    } catch (err) {
+        console.error('Failed to load scans:', err);
+    }
+}
+
+async function downloadReport() {
+    const scanId = document.getElementById('select-scan').value;
+    const format = document.querySelector('input[name="report-format"]:checked').value;
+    const fb = document.getElementById('report-feedback');
+
+    if (!scanId) {
+        fb.textContent = 'Please select a scan.';
+        fb.className = 'flash flash-error';
+        fb.style.display = 'block';
+        return;
+    }
+
+    fb.textContent = 'Generating report...';
+    fb.className = 'flash flash-info';
+    fb.style.display = 'block';
+
+    try {
+        const resp = await fetch('/api/reports/generate', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({scan_id: scanId, format: format}),
+        });
+
+        if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            fb.textContent = err.error || 'Failed to generate report.';
+            fb.className = 'flash flash-error';
+            return;
+        }
+
+        // Download the file
+        const blob = await resp.blob();
+        const disposition = resp.headers.get('Content-Disposition') || '';
+        const filenameMatch = disposition.match(/filename=(.+)/);
+        const filename = filenameMatch ? filenameMatch[1] : `report.${format}`;
+
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        fb.textContent = 'Report downloaded.';
+        fb.className = 'flash flash-success';
+    } catch (err) {
+        console.error('Failed to download report:', err);
+        fb.textContent = 'Error generating report.';
+        fb.className = 'flash flash-error';
+    }
+}
+
+loadProjects();
+</script>
 {% endblock %}

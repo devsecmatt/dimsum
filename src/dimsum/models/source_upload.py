@@ -19,9 +19,11 @@ class SourceUpload(db.Model):
     language: Mapped[str] = mapped_column(String(20), nullable=False)  # python, javascript, typescript
     file_path: Mapped[str] = mapped_column(String(500), nullable=False)
     file_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    repo_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     analysis_status: Mapped[str] = mapped_column(String(20), default="pending")  # pending, running, completed, failed
     extracted_params: Mapped[list] = mapped_column(JSONType, default=list)
     extracted_routes: Mapped[list] = mapped_column(JSONType, default=list)
+    risk_indicators: Mapped[list] = mapped_column(JSONType, default=list)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     project: Mapped[Project] = relationship(back_populates="source_uploads")
