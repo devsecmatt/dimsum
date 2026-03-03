@@ -35,7 +35,7 @@ ASVS_CHECKS = [
     ("V5.2.1", 5, "5.2", "Verify that all untrusted HTML input from WYSIWYG editors or similar is properly sanitized.", 1, 116, True, ["reflected_xss"]),
     ("V5.3.3", 5, "5.3", "Verify that the application sanitizes user input before passing to mail systems.", 2, 147, False, []),
     ("V5.3.4", 5, "5.3", "Verify that the application does not use eval() or other dynamic code execution features.", 2, 95, True, ["reflected_xss"]),
-    ("V5.3.7", 5, "5.3", "Verify that the application is not vulnerable to SQL Injection.", 1, 89, True, ["sql_injection"]),
+    ("V5.3.7", 5, "5.3", "Verify that the application is not vulnerable to SQL Injection.", 1, 89, True, ["sqli_error"]),
     ("V5.3.8", 5, "5.3", "Verify that the application is not vulnerable to OS Command Injection.", 1, 78, True, ["command_injection"]),
 
     # V6: Stored Cryptography

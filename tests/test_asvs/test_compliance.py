@@ -18,7 +18,7 @@ SAMPLE_CHECKS = [
         "level": 1,
         "cwe_id": 89,
         "can_be_automated": True,
-        "plugin_ids": ["sql_injection"],
+        "plugin_ids": ["sqli_error"],
     },
     {
         "asvs_id": "V14.4.3",
@@ -65,7 +65,7 @@ class TestComplianceAnalysis:
     def test_findings_cause_failures(self):
         findings = [
             {
-                "plugin_id": "sql_injection",
+                "plugin_id": "sqli_error",
                 "severity": "critical",
                 "cwe_id": 89,
                 "title": "SQL Injection found",
@@ -103,7 +103,7 @@ class TestComplianceAnalysis:
     def test_score_calculation(self):
         findings = [
             {
-                "plugin_id": "sql_injection",
+                "plugin_id": "sqli_error",
                 "severity": "high",
                 "cwe_id": 89,
                 "title": "SQLi",
@@ -179,7 +179,7 @@ class TestASVSSeeder:
     def test_plugin_id_mappings(self):
         """Verify plugin IDs in ASVS checks refer to known plugins."""
         known_plugins = {
-            "reflected_xss", "sql_injection", "command_injection",
+            "reflected_xss", "sqli_error", "command_injection",
             "security_headers", "cors_misconfig", "broken_auth",
             "tls_crypto", "ssrf", "web_crawler", "dir_bruteforce",
             "tech_fingerprint",
