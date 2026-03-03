@@ -27,15 +27,15 @@ class DevelopmentConfig(Config):
 class TestingConfig(Config):
     TESTING = True
     SQLALCHEMY_DATABASE_URI = os.environ.get(
-        "TEST_DATABASE_URL", "postgresql://dimsum:dimsum@localhost:5432/dimsum_test"
+        "TEST_DATABASE_URL", "sqlite://"
     )
     WTF_CSRF_ENABLED = False
 
 
 class ProductionConfig(Config):
     DEBUG = False
-    SQLALCHEMY_DATABASE_URI = os.environ["DATABASE_URL"]
-    SECRET_KEY = os.environ["SECRET_KEY"]
+    SQLALCHEMY_DATABASE_URI = os.environ.get("DATABASE_URL", "postgresql://dimsum:dimsum@localhost:5432/dimsum")
+    SECRET_KEY = os.environ.get("SECRET_KEY", "change-me-in-production")
 
 
 config_by_name = {

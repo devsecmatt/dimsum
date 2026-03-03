@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text, func
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from dimsum.models.compat import GUID, JSONType
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from dimsum.extensions import db
@@ -13,7 +13,7 @@ from dimsum.extensions import db
 class Scan(db.Model):
     __tablename__ = "scans"
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
     project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id"), nullable=False, index=True)
     config_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("scan_configurations.id"), nullable=True
@@ -24,7 +24,7 @@ class Scan(db.Model):
     scan_type: Mapped[str] = mapped_column(
         String(20), nullable=False, default="full"
     )  # full, quick, enumeration, source_only
-    target_ids: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    target_ids: Mapped[list] = mapped_column(JSONType, nullable=False, default=list)
     celery_task_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
     progress_percent: Mapped[int] = mapped_column(Integer, default=0)
     progress_message: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -33,7 +33,7 @@ class Scan(db.Model):
     duration_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
     total_requests: Mapped[int] = mapped_column(Integer, default=0)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
-    summary_stats: Mapped[dict] = mapped_column(JSONB, default=dict)
+    summary_stats: Mapped[dict] = mapped_column(JSONType, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     project: Mapped[Project] = relationship(back_populates="scans")
