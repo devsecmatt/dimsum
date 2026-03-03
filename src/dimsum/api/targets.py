@@ -5,12 +5,19 @@ import uuid
 
 from flask import Blueprint, jsonify, request
 from flask_login import current_user, login_required
+from marshmallow import ValidationError
 
+from dimsum.api.schemas import APISpecImportSchema, TargetCreateSchema, URLListImportSchema
 from dimsum.extensions import db
 from dimsum.models.project import Project
 from dimsum.models.target import Target
+from dimsum.utils.validators import validate_api_spec, validate_target
 
 targets_bp = Blueprint("api_targets", __name__)
+
+_create_schema = TargetCreateSchema()
+_spec_schema = APISpecImportSchema()
+_url_list_schema = URLListImportSchema()
 
 
 @targets_bp.route("/<project_id>/targets", methods=["GET"])
@@ -34,20 +41,21 @@ def create_target(project_id):
         return jsonify({"error": "Project not found"}), 404
 
     data = request.get_json(silent=True) or {}
-    target_type = data.get("target_type", "").strip()
-    value = data.get("value", "").strip()
+    try:
+        validated = _create_schema.load(data)
+    except ValidationError as err:
+        return jsonify({"error": "Validation failed", "details": err.messages}), 400
 
-    if target_type not in ("url", "url_list", "domain", "ip", "api_spec"):
-        return jsonify({"error": "Invalid target_type"}), 400
-    if not value:
-        return jsonify({"error": "Target value is required"}), 400
+    is_valid, normalized, error_msg = validate_target(validated["target_type"], validated["value"])
+    if not is_valid:
+        return jsonify({"error": error_msg}), 400
 
     target = Target(
         project_id=project.id,
-        target_type=target_type,
-        value=value,
-        api_spec_format=data.get("api_spec_format"),
-        api_spec_content=data.get("api_spec_content"),
+        target_type=validated["target_type"],
+        value=normalized,
+        api_spec_format=validated.get("api_spec_format"),
+        api_spec_content=validated.get("api_spec_content"),
     )
     db.session.add(target)
     db.session.commit()
@@ -62,24 +70,31 @@ def import_api_spec(project_id):
         return jsonify({"error": "Project not found"}), 404
 
     data = request.get_json(silent=True) or {}
-    base_url = data.get("base_url", "").strip()
-    spec_format = data.get("format", "openapi_3")
-    spec_content = data.get("spec")
+    try:
+        validated = _spec_schema.load(data)
+    except ValidationError as err:
+        return jsonify({"error": "Validation failed", "details": err.messages}), 400
 
-    if not base_url or not spec_content:
-        return jsonify({"error": "base_url and spec are required"}), 400
-
+    spec_content = validated["spec"]
     if isinstance(spec_content, str):
         try:
             spec_content = json.loads(spec_content)
         except json.JSONDecodeError:
             return jsonify({"error": "Invalid JSON in spec"}), 400
 
+    spec_valid, spec_error = validate_api_spec(spec_content, validated["format"])
+    if not spec_valid:
+        return jsonify({"error": spec_error}), 400
+
+    is_valid, normalized_url, url_error = validate_target("api_spec", validated["base_url"])
+    if not is_valid:
+        return jsonify({"error": url_error}), 400
+
     target = Target(
         project_id=project.id,
         target_type="api_spec",
-        value=base_url,
-        api_spec_format=spec_format,
+        value=normalized_url,
+        api_spec_format=validated["format"],
         api_spec_content=spec_content,
     )
     db.session.add(target)
@@ -95,19 +110,27 @@ def import_url_list(project_id):
         return jsonify({"error": "Project not found"}), 404
 
     data = request.get_json(silent=True) or {}
-    urls = data.get("urls", [])
-    if not urls:
-        return jsonify({"error": "urls list is required"}), 400
+    try:
+        validated = _url_list_schema.load(data)
+    except ValidationError as err:
+        return jsonify({"error": "Validation failed", "details": err.messages}), 400
 
     created = []
-    for url in urls:
-        url = url.strip()
-        if url:
-            target = Target(project_id=project.id, target_type="url", value=url)
+    errors = []
+    for url in validated["urls"]:
+        is_valid, normalized, error_msg = validate_target("url", url)
+        if is_valid:
+            target = Target(project_id=project.id, target_type="url", value=normalized)
             db.session.add(target)
             created.append(target)
+        else:
+            errors.append(error_msg)
+
     db.session.commit()
-    return jsonify({"created": len(created)}), 201
+    result = {"created": len(created)}
+    if errors:
+        result["errors"] = errors
+    return jsonify(result), 201
 
 
 @targets_bp.route("/<project_id>/targets/<target_id>", methods=["GET"])

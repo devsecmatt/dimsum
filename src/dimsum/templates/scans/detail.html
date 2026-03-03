@@ -1,12 +1,265 @@
 {% extends "base.html" %}
 {% block title %}Scan Detail{% endblock %}
 {% block content %}
-<div class="page-header"><h1>Scan {{ scan_id }}</h1></div>
-<div class="card"><div class="card-body">
-    <div id="scan-progress">
-        <div class="progress-bar"><div class="progress-bar-fill" id="progress-bar" style="width: 0%"></div></div>
-        <p id="progress-text">Loading...</p>
-        <p>Status: <span id="scan-status">—</span></p>
+<div class="page-header">
+    <h1>Scan Detail</h1>
+    <div class="page-actions">
+        <a href="/projects/{{ project_id }}" class="btn btn-secondary">Back to Project</a>
+        <button id="btn-cancel" class="btn btn-danger" style="display:none;" onclick="cancelScan()">Cancel Scan</button>
     </div>
-</div></div>
+</div>
+
+<!-- Status & Progress -->
+<div class="card" id="scan-info-card">
+    <div class="card-header">
+        <h3 id="scan-status-title">Loading...</h3>
+        <span class="badge" id="scan-status-badge">—</span>
+    </div>
+    <div class="card-body">
+        <div class="progress-bar" style="margin-bottom: 1rem;">
+            <div class="progress-bar-fill" id="progress-bar" style="width: 0%;"></div>
+        </div>
+        <p id="progress-text" style="color: var(--text-muted); font-size: 0.9rem;">Initializing...</p>
+
+        <div class="stats-grid" style="margin-top: 1.5rem;">
+            <div class="stat-card">
+                <div class="stat-value" id="stat-type">—</div>
+                <div class="stat-label">Scan Type</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="stat-duration">—</div>
+                <div class="stat-label">Duration</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="stat-requests">—</div>
+                <div class="stat-label">Total Requests</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="stat-findings">—</div>
+                <div class="stat-label">Findings</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Severity Breakdown (shown when scan is complete) -->
+<div class="card" id="severity-card" style="display: none;">
+    <div class="card-header"><h3>Findings by Severity</h3></div>
+    <div class="card-body">
+        <div class="stats-grid" id="severity-grid">
+            <div class="stat-card" style="border-left: 4px solid #dc3545;">
+                <div class="stat-value" id="sev-critical">0</div>
+                <div class="stat-label">Critical</div>
+            </div>
+            <div class="stat-card" style="border-left: 4px solid #fd7e14;">
+                <div class="stat-value" id="sev-high">0</div>
+                <div class="stat-label">High</div>
+            </div>
+            <div class="stat-card" style="border-left: 4px solid #ffc107;">
+                <div class="stat-value" id="sev-medium">0</div>
+                <div class="stat-label">Medium</div>
+            </div>
+            <div class="stat-card" style="border-left: 4px solid #17a2b8;">
+                <div class="stat-value" id="sev-low">0</div>
+                <div class="stat-label">Low</div>
+            </div>
+            <div class="stat-card" style="border-left: 4px solid #6c757d;">
+                <div class="stat-value" id="sev-info">0</div>
+                <div class="stat-label">Info</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Findings List (shown when scan is complete) -->
+<div class="card" id="findings-card" style="display: none;">
+    <div class="card-header">
+        <h3>Findings</h3>
+        <div>
+            <select id="filter-severity" onchange="filterFindings()" class="form-control" style="width: auto; display: inline-block;">
+                <option value="">All Severities</option>
+                <option value="critical">Critical</option>
+                <option value="high">High</option>
+                <option value="medium">Medium</option>
+                <option value="low">Low</option>
+                <option value="info">Info</option>
+            </select>
+        </div>
+    </div>
+    <div class="card-body">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Severity</th>
+                    <th>Title</th>
+                    <th>URL</th>
+                    <th>Parameter</th>
+                    <th>Plugin</th>
+                    <th>Confidence</th>
+                </tr>
+            </thead>
+            <tbody id="findings-tbody"></tbody>
+        </table>
+        <p id="no-findings" style="display: none; color: var(--text-muted); text-align: center; padding: 2rem;">
+            No findings discovered during this scan.
+        </p>
+    </div>
+</div>
+
+<!-- Error Card -->
+<div class="card" id="error-card" style="display: none; border-left: 4px solid #dc3545;">
+    <div class="card-header"><h3>Error</h3></div>
+    <div class="card-body">
+        <pre id="error-message" style="white-space: pre-wrap; color: #dc3545;"></pre>
+    </div>
+</div>
+
+<script src="/static/js/scan_monitor.js"></script>
+<script>
+const PROJECT_ID = "{{ project_id }}";
+const SCAN_ID = "{{ scan_id }}";
+let allFindings = [];
+
+const monitor = new ScanMonitor(PROJECT_ID, SCAN_ID);
+
+// Override onComplete to load full scan data + findings
+monitor.onComplete = async function(data) {
+    await loadScanDetail();
+    if (data.status === 'completed') {
+        await loadFindings();
+    }
+    if (data.status === 'failed') {
+        document.getElementById('error-card').style.display = '';
+        document.getElementById('error-message').textContent = data.error_message || 'Unknown error';
+    }
+};
+
+// Override updateUI for richer display
+const origUpdateUI = monitor.updateUI.bind(monitor);
+monitor.updateUI = function(data) {
+    origUpdateUI(data);
+    const badge = document.getElementById('scan-status-badge');
+    const cancelBtn = document.getElementById('btn-cancel');
+    if (badge) {
+        badge.textContent = data.status;
+        badge.className = 'badge badge-' + statusColor(data.status);
+    }
+    if (cancelBtn) {
+        cancelBtn.style.display = ['pending', 'running'].includes(data.status) ? '' : 'none';
+    }
+};
+
+function statusColor(status) {
+    const map = {pending: 'info', running: 'warning', completed: 'success', failed: 'danger', cancelled: 'secondary'};
+    return map[status] || 'secondary';
+}
+
+async function loadScanDetail() {
+    try {
+        const resp = await fetch(`/api/projects/${PROJECT_ID}/scans/${SCAN_ID}`);
+        if (!resp.ok) return;
+        const scan = await resp.json();
+
+        document.getElementById('scan-status-title').textContent = `Scan: ${scan.scan_type}`;
+        document.getElementById('stat-type').textContent = scan.scan_type;
+        document.getElementById('stat-duration').textContent = scan.duration_seconds
+            ? scan.duration_seconds.toFixed(1) + 's' : '—';
+        document.getElementById('stat-requests').textContent = scan.total_requests || 0;
+
+        if (scan.summary_stats) {
+            const total = scan.summary_stats.total_findings || 0;
+            document.getElementById('stat-findings').textContent = total;
+
+            if (scan.summary_stats.severity_counts) {
+                document.getElementById('severity-card').style.display = '';
+                const sc = scan.summary_stats.severity_counts;
+                document.getElementById('sev-critical').textContent = sc.critical || 0;
+                document.getElementById('sev-high').textContent = sc.high || 0;
+                document.getElementById('sev-medium').textContent = sc.medium || 0;
+                document.getElementById('sev-low').textContent = sc.low || 0;
+                document.getElementById('sev-info').textContent = sc.info || 0;
+            }
+        }
+
+        if (scan.error_message) {
+            document.getElementById('error-card').style.display = '';
+            document.getElementById('error-message').textContent = scan.error_message;
+        }
+    } catch (err) {
+        console.error('Failed to load scan detail:', err);
+    }
+}
+
+async function loadFindings() {
+    try {
+        const resp = await fetch(`/api/findings/?scan_id=${SCAN_ID}&per_page=200`);
+        if (!resp.ok) return;
+        allFindings = await resp.json();
+        document.getElementById('findings-card').style.display = '';
+        renderFindings(allFindings);
+    } catch (err) {
+        console.error('Failed to load findings:', err);
+    }
+}
+
+function renderFindings(findings) {
+    const tbody = document.getElementById('findings-tbody');
+    const noFindings = document.getElementById('no-findings');
+
+    if (findings.length === 0) {
+        tbody.innerHTML = '';
+        noFindings.style.display = '';
+        return;
+    }
+    noFindings.style.display = 'none';
+
+    tbody.innerHTML = findings.map(f => `
+        <tr>
+            <td><span class="badge badge-${severityColor(f.severity)}">${f.severity}</span></td>
+            <td><a href="/findings/${f.id}">${escapeHtml(f.title)}</a></td>
+            <td class="text-truncate" style="max-width:300px;" title="${escapeHtml(f.url)}">${escapeHtml(f.url)}</td>
+            <td>${f.parameter ? escapeHtml(f.parameter) : '—'}</td>
+            <td>${escapeHtml(f.plugin_id)}</td>
+            <td><span class="badge badge-${confidenceColor(f.confidence)}">${f.confidence}</span></td>
+        </tr>
+    `).join('');
+}
+
+function filterFindings() {
+    const sev = document.getElementById('filter-severity').value;
+    const filtered = sev ? allFindings.filter(f => f.severity === sev) : allFindings;
+    renderFindings(filtered);
+}
+
+function severityColor(s) {
+    return {critical: 'danger', high: 'warning', medium: 'info', low: 'secondary', info: 'secondary'}[s] || 'secondary';
+}
+
+function confidenceColor(c) {
+    return {confirmed: 'success', firm: 'info', tentative: 'secondary'}[c] || 'secondary';
+}
+
+function escapeHtml(s) {
+    if (!s) return '';
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+async function cancelScan() {
+    if (!confirm('Cancel this scan?')) return;
+    try {
+        const resp = await fetch(`/api/projects/${PROJECT_ID}/scans/${SCAN_ID}/cancel`, {method: 'POST'});
+        if (resp.ok) {
+            monitor.stop();
+            location.reload();
+        }
+    } catch (err) {
+        console.error('Failed to cancel scan:', err);
+    }
+}
+
+// Start monitoring
+monitor.start();
+// Also load the full detail immediately
+loadScanDetail();
+</script>
 {% endblock %}

@@ -50,7 +50,9 @@ def _register_blueprints(app: Flask) -> None:
     from dimsum.api.reports import reports_bp
     from dimsum.api.asvs import asvs_bp
     from dimsum.api.wordlists import wordlists_bp
+    from dimsum.api.scan_configs import scan_configs_bp
     from dimsum.api.source_analysis import source_analysis_bp
+    from dimsum.api.plugins import plugins_bp
     from dimsum.views.auth import views_auth_bp
     from dimsum.views.dashboard import dashboard_bp
     from dimsum.views.projects import views_projects_bp
@@ -68,7 +70,9 @@ def _register_blueprints(app: Flask) -> None:
     app.register_blueprint(reports_bp, url_prefix="/api/reports")
     app.register_blueprint(asvs_bp, url_prefix="/api/asvs")
     app.register_blueprint(wordlists_bp, url_prefix="/api/wordlists")
+    app.register_blueprint(scan_configs_bp, url_prefix="/api/projects")
     app.register_blueprint(source_analysis_bp, url_prefix="/api/projects")
+    app.register_blueprint(plugins_bp, url_prefix="/api/plugins")
 
     # View blueprints
     app.register_blueprint(views_auth_bp)

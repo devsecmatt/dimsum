@@ -1,6 +1,6 @@
 [build-system]
 requires = ["setuptools>=68.0", "wheel"]
-build-backend = "setuptools.backends._legacy:_Backend"
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "dimsum"
@@ -42,7 +42,14 @@ dev = [
     "ruff>=0.3,<1",
 ]
 all = [
-    "dimsum[source-analysis,reports,dev]",
+    "tree-sitter>=0.21,<1",
+    "tree-sitter-javascript>=0.21,<1",
+    "tree-sitter-typescript>=0.21,<1",
+    "weasyprint>=61,<63",
+    "pytest>=8.0,<9",
+    "pytest-cov>=4.1,<6",
+    "factory-boy>=3.3,<4",
+    "ruff>=0.3,<1",
 ]
 
 [tool.setuptools.packages.find]

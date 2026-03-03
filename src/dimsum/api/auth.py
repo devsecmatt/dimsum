@@ -2,27 +2,30 @@ from __future__ import annotations
 
 from flask import Blueprint, jsonify, request
 from flask_login import current_user, login_required, login_user, logout_user
+from marshmallow import ValidationError
 
+from dimsum.api.schemas import LoginSchema
 from dimsum.extensions import db
 from dimsum.models.user import User
 
 auth_api_bp = Blueprint("api_auth", __name__)
 
+_login_schema = LoginSchema()
+
 
 @auth_api_bp.route("/login", methods=["POST"])
 def login():
     data = request.get_json(silent=True) or {}
-    username = data.get("username", "")
-    password = data.get("password", "")
-
-    if not username or not password:
-        return jsonify({"error": "Username and password are required"}), 400
+    try:
+        validated = _login_schema.load(data)
+    except ValidationError as err:
+        return jsonify({"error": "Validation failed", "details": err.messages}), 400
 
     user = db.session.execute(
-        db.select(User).filter_by(username=username)
+        db.select(User).filter_by(username=validated["username"])
     ).scalar_one_or_none()
 
-    if user is None or not user.check_password(password):
+    if user is None or not user.check_password(validated["password"]):
         return jsonify({"error": "Invalid credentials"}), 401
 
     login_user(user)

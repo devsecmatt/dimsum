@@ -4,13 +4,20 @@ from celery import Celery
 
 
 def create_celery_app(flask_app=None) -> Celery:
-    """Create and configure the Celery application."""
-    celery = Celery(
-        "dimsum",
-        broker_url="redis://localhost:6379/0",
-        result_backend="redis://localhost:6379/1",
-    )
+    """Create and configure the Celery application.
+
+    When flask_app is provided, tasks run inside the Flask app context
+    (needed for DB access). When flask_app is None, a Flask app is
+    created automatically so the Celery CLI worker has full access.
+    """
+    if flask_app is None:
+        from dimsum.app import create_app
+        flask_app = create_app()
+
+    celery = Celery("dimsum")
     celery.conf.update(
+        broker_url=flask_app.config.get("CELERY_BROKER_URL", "redis://localhost:6379/0"),
+        result_backend=flask_app.config.get("CELERY_RESULT_BACKEND", "redis://localhost:6379/1"),
         task_serializer="json",
         result_serializer="json",
         accept_content=["json"],
@@ -26,18 +33,15 @@ def create_celery_app(flask_app=None) -> Celery:
             "dimsum.tasks.report_tasks.*": {"queue": "reports"},
             "dimsum.tasks.source_analysis_tasks.*": {"queue": "analysis"},
         },
+        include=["dimsum.tasks.scan_tasks"],
     )
 
-    if flask_app:
-        celery.conf.update(broker_url=flask_app.config["CELERY_BROKER_URL"])
-        celery.conf.update(result_backend=flask_app.config["CELERY_RESULT_BACKEND"])
+    class FlaskTask(celery.Task):
+        def __call__(self, *args, **kwargs):
+            with flask_app.app_context():
+                return self.run(*args, **kwargs)
 
-        class FlaskTask(celery.Task):
-            def __call__(self, *args, **kwargs):
-                with flask_app.app_context():
-                    return self.run(*args, **kwargs)
-
-        celery.Task = FlaskTask
+    celery.Task = FlaskTask
 
     return celery
 

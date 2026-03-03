@@ -4,12 +4,16 @@ import uuid
 
 from flask import Blueprint, jsonify, request
 from flask_login import current_user, login_required
+from marshmallow import ValidationError
 
+from dimsum.api.schemas import ScanCreateSchema
 from dimsum.extensions import db
 from dimsum.models.project import Project
 from dimsum.models.scan import Scan
 
 scans_bp = Blueprint("api_scans", __name__)
+
+_create_schema = ScanCreateSchema()
 
 
 @scans_bp.route("/<project_id>/scans", methods=["GET"])
@@ -33,19 +37,31 @@ def create_scan(project_id):
         return jsonify({"error": "Project not found"}), 404
 
     data = request.get_json(silent=True) or {}
+    try:
+        validated = _create_schema.load(data)
+    except ValidationError as err:
+        return jsonify({"error": "Validation failed", "details": err.messages}), 400
+
+    config_id = validated.get("config_id")
+    if config_id:
+        try:
+            config_id = uuid.UUID(config_id)
+        except ValueError:
+            return jsonify({"error": "Invalid config_id"}), 400
+
     scan = Scan(
         project_id=project.id,
-        scan_type=data.get("scan_type", "full"),
-        target_ids=data.get("target_ids", []),
-        config_id=data.get("config_id"),
+        scan_type=validated["scan_type"],
+        target_ids=validated["target_ids"],
+        config_id=config_id,
     )
     db.session.add(scan)
     db.session.commit()
 
-    # Dispatch Celery task
+    # Dispatch Celery task to the scans queue
     try:
         from dimsum.tasks.scan_tasks import run_scan
-        task = run_scan.delay(str(scan.id))
+        task = run_scan.apply_async(args=[str(scan.id)], queue="scans")
         scan.celery_task_id = task.id
         db.session.commit()
     except Exception:

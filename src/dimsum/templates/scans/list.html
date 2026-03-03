@@ -1,6 +1,90 @@
 {% extends "base.html" %}
-{% block title %}Scans{% endblock %}
+{% block title %}All Scans{% endblock %}
 {% block content %}
-<div class="page-header"><h1>Scans</h1></div>
-<p class="empty-state">Select a project to view its scans.</p>
+<div class="page-header">
+    <h1>All Scans</h1>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <table class="table" id="scans-table">
+            <thead>
+                <tr>
+                    <th>Project</th>
+                    <th>Scan Type</th>
+                    <th>Status</th>
+                    <th>Progress</th>
+                    <th>Findings</th>
+                    <th>Started</th>
+                    <th>Duration</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody id="scans-tbody">
+                <tr><td colspan="8" class="empty-state">Loading scans...</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+async function loadAllScans() {
+    try {
+        // First get all projects, then get scans for each
+        const projResp = await fetch('/api/projects/');
+        if (!projResp.ok) return;
+        const projects = await projResp.json();
+
+        let allScans = [];
+        for (const proj of projects) {
+            const scanResp = await fetch(`/api/projects/${proj.id}/scans`);
+            if (scanResp.ok) {
+                const scans = await scanResp.json();
+                scans.forEach(s => { s._project_name = proj.name; s._project_id = proj.id; });
+                allScans = allScans.concat(scans);
+            }
+        }
+
+        // Sort by created_at descending
+        allScans.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+        const tbody = document.getElementById('scans-tbody');
+        if (allScans.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="8" class="empty-state">No scans yet. Launch a scan from a project page.</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = allScans.map(s => `
+            <tr>
+                <td><a href="/projects/${s._project_id}">${escapeHtml(s._project_name)}</a></td>
+                <td>${s.scan_type}</td>
+                <td><span class="badge badge-${statusColor(s.status)}">${s.status}</span></td>
+                <td>
+                    <div class="progress-bar" style="width: 100px; display: inline-block; vertical-align: middle;">
+                        <div class="progress-bar-fill" style="width: ${s.progress_percent}%;"></div>
+                    </div>
+                    <span style="font-size: 0.8rem;">${s.progress_percent}%</span>
+                </td>
+                <td>${s.summary_stats?.total_findings ?? '—'}</td>
+                <td>${s.started_at ? new Date(s.started_at).toLocaleString() : '—'}</td>
+                <td>${s.duration_seconds ? s.duration_seconds.toFixed(1) + 's' : '—'}</td>
+                <td><a href="/scans/${s.id}" class="btn btn-sm btn-primary">View</a></td>
+            </tr>
+        `).join('');
+    } catch (err) {
+        console.error('Failed to load scans:', err);
+    }
+}
+
+function statusColor(status) {
+    return {pending: 'info', running: 'warning', completed: 'success', failed: 'danger', cancelled: 'secondary'}[status] || 'secondary';
+}
+
+function escapeHtml(s) {
+    if (!s) return '';
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+loadAllScans();
+</script>
 {% endblock %}

@@ -6,14 +6,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     rm -rf /var/lib/apt/lists/*
 COPY pyproject.toml .
 COPY src/ /app/src/
-RUN pip install --no-cache-dir ".[all]"
+RUN pip install --no-cache-dir ".[dev]"
 
 # ---- Development ----
 FROM base AS development
 COPY migrations/ /app/migrations/
 COPY alembic.ini /app/
 ENV PYTHONPATH=/app/src
-EXPOSE 5000
+EXPOSE 5050
 
 # ---- Production ----
 FROM base AS production

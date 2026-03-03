@@ -16,42 +16,78 @@
     <button class="tab" data-tab="config">Configuration</button>
 </div>
 
+<!-- Targets Tab -->
 <div class="tab-content active" id="tab-targets">
     <div class="card">
         <div class="card-header">
             <h2>Targets</h2>
         </div>
         <div class="card-body">
-            {% if project.targets %}
-            <table class="table">
+            <form id="add-target-form" class="inline-form">
+                <div class="form-row">
+                    <select id="target-type" class="form-control form-control-sm">
+                        <option value="url">URL</option>
+                        <option value="domain">Domain</option>
+                        <option value="ip">IP Address</option>
+                    </select>
+                    <input type="text" id="target-value" class="form-control form-control-sm"
+                           placeholder="e.g., https://example.com" required>
+                    <button type="submit" class="btn btn-primary btn-sm">Add Target</button>
+                </div>
+            </form>
+            <div id="target-feedback" class="flash" style="display:none; margin-top:0.5rem;"></div>
+
+            <table class="table" style="margin-top:1rem;">
                 <thead>
                     <tr>
                         <th>Type</th>
                         <th>Value</th>
                         <th>Active</th>
+                        <th>Actions</th>
                     </tr>
                 </thead>
-                <tbody>
+                <tbody id="targets-table-body">
                     {% for target in project.targets %}
-                    <tr>
+                    <tr data-target-id="{{ target.id }}">
                         <td><span class="badge">{{ target.target_type }}</span></td>
                         <td>{{ target.value }}</td>
                         <td>{{ 'Yes' if target.is_active else 'No' }}</td>
+                        <td>
+                            {% if target.is_active %}
+                            <button class="btn btn-sm btn-secondary" onclick="deleteTarget('{{ target.id }}')">Remove</button>
+                            {% endif %}
+                        </td>
                     </tr>
                     {% endfor %}
                 </tbody>
             </table>
-            {% else %}
-            <p class="empty-state">No targets added yet.</p>
+            {% if not project.targets %}
+            <p class="empty-state" id="no-targets-msg">No targets added yet.</p>
             {% endif %}
+        </div>
+    </div>
+
+    <div class="card" style="margin-top:1rem;">
+        <div class="card-header"><h2>Bulk Import URLs</h2></div>
+        <div class="card-body">
+            <form id="import-urls-form">
+                <div class="form-group">
+                    <textarea id="bulk-urls" class="form-control" rows="4"
+                              placeholder="Paste URLs here, one per line"></textarea>
+                </div>
+                <button type="submit" class="btn btn-primary btn-sm">Import URLs</button>
+            </form>
+            <div id="import-feedback" class="flash" style="display:none; margin-top:0.5rem;"></div>
         </div>
     </div>
 </div>
 
+<!-- Scans Tab -->
 <div class="tab-content" id="tab-scans">
     <div class="card">
         <div class="card-header">
             <h2>Scans</h2>
+            <button class="btn btn-sm btn-primary" onclick="launchScan()">Launch Scan</button>
         </div>
         <div class="card-body">
             {% if project.scans %}
@@ -61,31 +97,75 @@
                         <th>Status</th>
                         <th>Type</th>
                         <th>Progress</th>
+                        <th>Findings</th>
                         <th>Created</th>
                     </tr>
                 </thead>
                 <tbody>
-                    {% for scan in project.scans %}
-                    <tr>
+                    {% for scan in project.scans | sort(attribute='created_at', reverse=True) %}
+                    <tr style="cursor:pointer;" onclick="window.location='/scans/{{ scan.id }}'">
                         <td><span class="badge badge-{{ scan.status }}">{{ scan.status }}</span></td>
                         <td>{{ scan.scan_type }}</td>
-                        <td>{{ scan.progress_percent }}%</td>
+                        <td>
+                            <div class="progress-bar" style="width: 80px; display: inline-block; vertical-align: middle;">
+                                <div class="progress-bar-fill" style="width: {{ scan.progress_percent }}%;"></div>
+                            </div>
+                            {{ scan.progress_percent }}%
+                        </td>
+                        <td>{{ scan.findings | length }}</td>
                         <td>{{ scan.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
                     </tr>
                     {% endfor %}
                 </tbody>
             </table>
             {% else %}
-            <p class="empty-state">No scans run yet.</p>
+            <p class="empty-state">No scans run yet. Add targets and launch a scan.</p>
             {% endif %}
         </div>
     </div>
 </div>
 
+<!-- Configuration Tab -->
 <div class="tab-content" id="tab-config">
     <div class="card">
+        <div class="card-header">
+            <h2>Scan Configuration</h2>
+        </div>
         <div class="card-body">
-            <p class="empty-state">Scan configuration will be available here.</p>
+            <form id="scan-config-form">
+                <div class="form-row">
+                    <div class="form-group" style="flex:1;">
+                        <label for="cfg-concurrency">Max Concurrency</label>
+                        <input type="number" id="cfg-concurrency" class="form-control" value="10" min="1" max="100">
+                    </div>
+                    <div class="form-group" style="flex:1;">
+                        <label for="cfg-delay">Request Delay (ms)</label>
+                        <input type="number" id="cfg-delay" class="form-control" value="100" min="0" max="10000">
+                    </div>
+                    <div class="form-group" style="flex:1;">
+                        <label for="cfg-timeout">Timeout (s)</label>
+                        <input type="number" id="cfg-timeout" class="form-control" value="30" min="1" max="300">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="cfg-headers">Custom Headers (JSON)</label>
+                    <textarea id="cfg-headers" class="form-control" rows="2" placeholder='{"Authorization": "Bearer ..."}'></textarea>
+                </div>
+                <div class="form-group">
+                    <label><input type="checkbox" id="cfg-enum"> Enable enumeration</label>
+                </div>
+                <div class="form-group">
+                    <label>ASVS Level:
+                        <select id="cfg-asvs" class="form-control form-control-sm" style="width:auto;display:inline;">
+                            <option value="1" selected>Level 1</option>
+                            <option value="2">Level 2</option>
+                            <option value="3">Level 3</option>
+                        </select>
+                    </label>
+                </div>
+                <button type="submit" class="btn btn-primary btn-sm">Save Configuration</button>
+            </form>
+            <div id="config-feedback" class="flash" style="display:none; margin-top:0.5rem;"></div>
         </div>
     </div>
 </div>
@@ -93,6 +173,9 @@
 
 {% block scripts %}
 <script>
+const PROJECT_ID = "{{ project.id }}";
+
+// Tab switching
 document.querySelectorAll('.tab').forEach(tab => {
     tab.addEventListener('click', () => {
         document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -100,6 +183,130 @@ document.querySelectorAll('.tab').forEach(tab => {
         tab.classList.add('active');
         document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
     });
+});
+
+// Add target
+document.getElementById('add-target-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const type = document.getElementById('target-type').value;
+    const value = document.getElementById('target-value').value.trim();
+    if (!value) return;
+
+    const resp = await fetch(`/api/projects/${PROJECT_ID}/targets`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({target_type: type, value: value}),
+    });
+    const data = await resp.json();
+    const fb = document.getElementById('target-feedback');
+    if (resp.ok) {
+        fb.textContent = `Target added: ${data.value}`;
+        fb.className = 'flash flash-success';
+        fb.style.display = 'block';
+        document.getElementById('target-value').value = '';
+        setTimeout(() => location.reload(), 800);
+    } else {
+        fb.textContent = data.error || 'Failed to add target';
+        fb.className = 'flash flash-error';
+        fb.style.display = 'block';
+    }
+});
+
+// Delete target
+async function deleteTarget(targetId) {
+    const resp = await fetch(`/api/projects/${PROJECT_ID}/targets/${targetId}`, {method: 'DELETE'});
+    if (resp.ok) {
+        const row = document.querySelector(`tr[data-target-id="${targetId}"]`);
+        if (row) row.remove();
+    }
+}
+
+// Bulk import URLs
+document.getElementById('import-urls-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const text = document.getElementById('bulk-urls').value.trim();
+    if (!text) return;
+    const urls = text.split('\n').map(u => u.trim()).filter(Boolean);
+
+    const resp = await fetch(`/api/projects/${PROJECT_ID}/targets/import-urls`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({urls}),
+    });
+    const data = await resp.json();
+    const fb = document.getElementById('import-feedback');
+    if (resp.ok) {
+        let msg = `Imported ${data.created} URLs.`;
+        if (data.errors) msg += ` ${data.errors.length} failed.`;
+        fb.textContent = msg;
+        fb.className = 'flash flash-success';
+        fb.style.display = 'block';
+        document.getElementById('bulk-urls').value = '';
+        setTimeout(() => location.reload(), 1000);
+    } else {
+        fb.textContent = data.error || 'Import failed';
+        fb.className = 'flash flash-error';
+        fb.style.display = 'block';
+    }
+});
+
+// Launch scan
+async function launchScan() {
+    const targetIds = Array.from(document.querySelectorAll('#targets-table-body tr'))
+        .map(row => row.dataset.targetId).filter(Boolean);
+
+    if (targetIds.length === 0) {
+        alert('Add at least one target before launching a scan.');
+        return;
+    }
+
+    const resp = await fetch(`/api/projects/${PROJECT_ID}/scans`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({scan_type: 'full', target_ids: targetIds}),
+    });
+    if (resp.ok) {
+        const scan = await resp.json();
+        // Redirect to scan detail page for real-time progress
+        window.location.href = `/scans/${scan.id}`;
+    } else {
+        const data = await resp.json().catch(() => ({}));
+        alert(data.error || 'Failed to launch scan');
+    }
+}
+
+// Save config
+document.getElementById('scan-config-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    let headers = {};
+    try {
+        const hdr = document.getElementById('cfg-headers').value.trim();
+        if (hdr) headers = JSON.parse(hdr);
+    } catch { /* ignore parse errors */ }
+
+    const config = {
+        name: 'Default',
+        max_concurrency: parseInt(document.getElementById('cfg-concurrency').value),
+        request_delay_ms: parseInt(document.getElementById('cfg-delay').value),
+        timeout_seconds: parseInt(document.getElementById('cfg-timeout').value),
+        custom_headers: headers,
+        enable_enumeration: document.getElementById('cfg-enum').checked,
+        asvs_level: parseInt(document.getElementById('cfg-asvs').value),
+    };
+    const resp = await fetch(`/api/projects/${PROJECT_ID}/configs`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(config),
+    });
+    const fb = document.getElementById('config-feedback');
+    if (resp.ok) {
+        fb.textContent = 'Configuration saved.';
+        fb.className = 'flash flash-success';
+    } else {
+        fb.textContent = 'Failed to save configuration.';
+        fb.className = 'flash flash-error';
+    }
+    fb.style.display = 'block';
 });
 </script>
 {% endblock %}

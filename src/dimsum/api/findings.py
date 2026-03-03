@@ -4,11 +4,16 @@ import uuid
 
 from flask import Blueprint, jsonify, request
 from flask_login import login_required
+from marshmallow import ValidationError
 
+from dimsum.api.schemas import FindingUpdateSchema
 from dimsum.extensions import db
 from dimsum.models.finding import Finding
+from dimsum.utils.pagination import get_pagination_params
 
 findings_bp = Blueprint("api_findings", __name__)
+
+_update_schema = FindingUpdateSchema()
 
 
 @findings_bp.route("/", methods=["GET"])
@@ -34,10 +39,7 @@ def list_findings():
 
     query = query.order_by(Finding.created_at.desc())
 
-    page = request.args.get("page", 1, type=int)
-    per_page = request.args.get("per_page", 50, type=int)
-    per_page = min(per_page, 200)
-    offset = (page - 1) * per_page
+    page, per_page, offset = get_pagination_params()
 
     findings = db.session.execute(query.offset(offset).limit(per_page)).scalars().all()
     return jsonify([_serialize_finding(f) for f in findings])
@@ -60,10 +62,15 @@ def update_finding(finding_id):
         return jsonify({"error": "Finding not found"}), 404
 
     data = request.get_json(silent=True) or {}
-    if "is_false_positive" in data:
-        finding.is_false_positive = bool(data["is_false_positive"])
-    if "notes" in data:
-        finding.notes = data["notes"]
+    try:
+        validated = _update_schema.load(data)
+    except ValidationError as err:
+        return jsonify({"error": "Validation failed", "details": err.messages}), 400
+
+    if "is_false_positive" in validated:
+        finding.is_false_positive = validated["is_false_positive"]
+    if "notes" in validated:
+        finding.notes = validated["notes"]
     db.session.commit()
     return jsonify(_serialize_finding(finding))
 
