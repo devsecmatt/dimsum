@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, func
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from dimsum.models.compat import GUID, JSONType
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from dimsum.extensions import db
@@ -13,17 +13,17 @@ from dimsum.extensions import db
 class ScanConfiguration(db.Model):
     __tablename__ = "scan_configurations"
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
     project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id"), nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
-    enabled_plugins: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    enabled_plugins: Mapped[list] = mapped_column(JSONType, nullable=False, default=list)
     max_concurrency: Mapped[int] = mapped_column(Integer, default=10)
     request_delay_ms: Mapped[int] = mapped_column(Integer, default=100)
     timeout_seconds: Mapped[int] = mapped_column(Integer, default=30)
     max_depth: Mapped[int] = mapped_column(Integer, default=3)
-    custom_headers: Mapped[dict] = mapped_column(JSONB, default=dict)
-    auth_config: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
-    wordlist_ids: Mapped[list] = mapped_column(JSONB, default=list)
+    custom_headers: Mapped[dict] = mapped_column(JSONType, default=dict)
+    auth_config: Mapped[dict | None] = mapped_column(JSONType, nullable=True)
+    wordlist_ids: Mapped[list] = mapped_column(JSONType, default=list)
     enable_enumeration: Mapped[bool] = mapped_column(Boolean, default=False)
     enable_source_analysis: Mapped[bool] = mapped_column(Boolean, default=False)
     asvs_level: Mapped[int] = mapped_column(Integer, default=1)

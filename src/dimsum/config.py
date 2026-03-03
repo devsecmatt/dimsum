@@ -27,7 +27,7 @@ class DevelopmentConfig(Config):
 class TestingConfig(Config):
     TESTING = True
     SQLALCHEMY_DATABASE_URI = os.environ.get(
-        "TEST_DATABASE_URL", "postgresql://dimsum:dimsum@localhost:5432/dimsum_test"
+        "TEST_DATABASE_URL", "sqlite://"
     )
     WTF_CSRF_ENABLED = False
 
