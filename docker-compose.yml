@@ -1,0 +1,81 @@
+services:
+  web:
+    build:
+      context: .
+      target: development
+    ports:
+      - "5000:5000"
+    environment:
+      - FLASK_APP=dimsum.app:create_app
+      - FLASK_ENV=development
+      - DATABASE_URL=postgresql://dimsum:dimsum@postgres:5432/dimsum
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/1
+      - SECRET_KEY=dev-secret-key-change-in-prod
+      - ADMIN_USERNAME=admin
+      - ADMIN_PASSWORD=admin
+      - ADMIN_EMAIL=admin@localhost
+    volumes:
+      - ./src:/app/src
+      - ./migrations:/app/migrations
+      - upload_data:/app/uploads
+      - wordlist_data:/app/wordlists
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    command: >
+      sh -c "cd /app && python -m flask db upgrade &&
+             python -m flask run --host=0.0.0.0 --port=5000 --reload"
+
+  celery-worker:
+    build:
+      context: .
+      target: development
+    environment:
+      - DATABASE_URL=postgresql://dimsum:dimsum@postgres:5432/dimsum
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/1
+      - SECRET_KEY=dev-secret-key-change-in-prod
+    volumes:
+      - ./src:/app/src
+      - upload_data:/app/uploads
+      - wordlist_data:/app/wordlists
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    command: >
+      celery -A dimsum.celery_app:celery worker
+      --loglevel=info -Q scans,reports,analysis --concurrency=4
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=dimsum
+      - POSTGRES_PASSWORD=dimsum
+      - POSTGRES_DB=dimsum
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dimsum"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+volumes:
+  postgres_data:
+  redis_data:
+  upload_data:
+  wordlist_data:

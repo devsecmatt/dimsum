@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+
+{% block title %}{{ project.name }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>{{ project.name }}</h1>
+    {% if project.description %}
+    <p class="page-subtitle">{{ project.description }}</p>
+    {% endif %}
+</div>
+
+<div class="tabs">
+    <button class="tab active" data-tab="targets">Targets ({{ project.targets | length }})</button>
+    <button class="tab" data-tab="scans">Scans ({{ project.scans | length }})</button>
+    <button class="tab" data-tab="config">Configuration</button>
+</div>
+
+<div class="tab-content active" id="tab-targets">
+    <div class="card">
+        <div class="card-header">
+            <h2>Targets</h2>
+        </div>
+        <div class="card-body">
+            {% if project.targets %}
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Type</th>
+                        <th>Value</th>
+                        <th>Active</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for target in project.targets %}
+                    <tr>
+                        <td><span class="badge">{{ target.target_type }}</span></td>
+                        <td>{{ target.value }}</td>
+                        <td>{{ 'Yes' if target.is_active else 'No' }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <p class="empty-state">No targets added yet.</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<div class="tab-content" id="tab-scans">
+    <div class="card">
+        <div class="card-header">
+            <h2>Scans</h2>
+        </div>
+        <div class="card-body">
+            {% if project.scans %}
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Status</th>
+                        <th>Type</th>
+                        <th>Progress</th>
+                        <th>Created</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for scan in project.scans %}
+                    <tr>
+                        <td><span class="badge badge-{{ scan.status }}">{{ scan.status }}</span></td>
+                        <td>{{ scan.scan_type }}</td>
+                        <td>{{ scan.progress_percent }}%</td>
+                        <td>{{ scan.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <p class="empty-state">No scans run yet.</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<div class="tab-content" id="tab-config">
+    <div class="card">
+        <div class="card-body">
+            <p class="empty-state">Scan configuration will be available here.</p>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.querySelectorAll('.tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+        tab.classList.add('active');
+        document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+    });
+});
+</script>
+{% endblock %}
