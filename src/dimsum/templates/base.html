@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}dimsum{% endblock %} — DAST Scanner</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+    {% block head %}{% endblock %}
+</head>
+<body>
+    {% if current_user.is_authenticated %}
+    <nav class="navbar">
+        <div class="navbar-brand">
+            <a href="{{ url_for('views_dashboard.index') }}">dimsum</a>
+        </div>
+        <div class="navbar-menu">
+            <a href="{{ url_for('views_dashboard.index') }}" class="nav-link">Dashboard</a>
+            <a href="{{ url_for('views_projects.list_projects') }}" class="nav-link">Projects</a>
+            <a href="{{ url_for('views_findings.list_findings') }}" class="nav-link">Findings</a>
+            <a href="{{ url_for('views_reports.generate') }}" class="nav-link">Reports</a>
+            <a href="{{ url_for('views_settings.index') }}" class="nav-link">Settings</a>
+        </div>
+        <div class="navbar-end">
+            <span class="nav-user">{{ current_user.username }}</span>
+            <a href="{{ url_for('views_auth.logout') }}" class="nav-link">Logout</a>
+        </div>
+    </nav>
+    {% endif %}
+
+    <main class="container">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        <div class="flash-messages">
+            {% for category, message in messages %}
+            <div class="flash flash-{{ category }}">{{ message }}</div>
+            {% endfor %}
+        </div>
+        {% endif %}
+        {% endwith %}
+
+        {% block content %}{% endblock %}
+    </main>
+
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>
