@@ -37,6 +37,26 @@ class BaseScanPlugin(abc.ABC):
         urls.extend(self.context.discovered_endpoints)
         return urls
 
+    def get_extracted_params_by_source(self, *sources: str) -> list[dict]:
+        """Get extracted parameters filtered by source type (query, body, header, path, cookie).
+
+        Returns a deduplicated list of parameter dicts from source analysis.
+        """
+        seen: set[str] = set()
+        result: list[dict] = []
+        for ep in self.context.extracted_parameters:
+            name = ep.get("name", "")
+            source = ep.get("source", "query")
+            if not name:
+                continue
+            if sources and source not in sources:
+                continue
+            key = f"{name}:{source}"
+            if key not in seen:
+                seen.add(key)
+                result.append(ep)
+        return result
+
     def log(self, msg: str, *args) -> None:
         """Log a message scoped to this plugin."""
         import logging

@@ -163,3 +163,105 @@ class TestScanContext:
     def test_progress_zero_total(self):
         ctx = ScanContext(scan_id=uuid.uuid4(), total_checks=0, completed_checks=0)
         assert ctx.progress_percent == 0
+
+    def test_extracted_routes_field(self):
+        ctx = ScanContext(
+            scan_id=uuid.uuid4(),
+            extracted_routes=[
+                {"path": "/api/users", "method": "GET", "framework": "express"},
+                {"path": "/api/orders", "method": "POST", "framework": "express"},
+            ],
+        )
+        assert len(ctx.extracted_routes) == 2
+        assert ctx.extracted_routes[0]["path"] == "/api/users"
+
+    def test_extracted_parameters_field(self):
+        ctx = ScanContext(
+            scan_id=uuid.uuid4(),
+            extracted_parameters=[
+                {"name": "id", "source": "query", "file": "server.js", "line": 10},
+                {"name": "name", "source": "body", "file": "server.js", "line": 15},
+            ],
+        )
+        assert len(ctx.extracted_parameters) == 2
+        assert ctx.extracted_parameters[1]["source"] == "body"
+
+    def test_source_routes_as_discovered_endpoints(self):
+        """Extracted routes should be convertible to discovered endpoints."""
+        ctx = ScanContext(
+            scan_id=uuid.uuid4(),
+            target_urls=["http://example.com"],
+        )
+        routes = [
+            {"path": "/api/users", "method": "GET"},
+            {"path": "/api/orders", "method": "POST"},
+        ]
+        base = ctx.target_urls[0].rstrip("/")
+        for route in routes:
+            path = route.get("path", "")
+            if path.startswith("/"):
+                ctx.add_discovered_endpoint(f"{base}{path}")
+
+        assert "http://example.com/api/users" in ctx.discovered_endpoints
+        assert "http://example.com/api/orders" in ctx.discovered_endpoints
+        assert len(ctx.all_urls) == 3  # 1 target + 2 discovered
+
+
+class TestBasePluginExtractedParams:
+    """Tests for the BaseScanPlugin.get_extracted_params_by_source helper."""
+
+    def test_filters_by_source(self):
+        from dimsum.scanner.base_plugin import BaseScanPlugin
+
+        ctx = ScanContext(
+            scan_id=uuid.uuid4(),
+            extracted_parameters=[
+                {"name": "id", "source": "query"},
+                {"name": "name", "source": "body"},
+                {"name": "token", "source": "header"},
+                {"name": "user_id", "source": "path"},
+            ],
+        )
+        # Create a minimal concrete plugin for testing
+        class DummyPlugin(BaseScanPlugin):
+            async def run(self):
+                return []
+
+        DummyPlugin.meta = MagicMock()
+        plugin = DummyPlugin(ctx, MagicMock())
+
+        query_params = plugin.get_extracted_params_by_source("query")
+        assert len(query_params) == 1
+        assert query_params[0]["name"] == "id"
+
+        body_params = plugin.get_extracted_params_by_source("body")
+        assert len(body_params) == 1
+        assert body_params[0]["name"] == "name"
+
+        query_body = plugin.get_extracted_params_by_source("query", "body")
+        assert len(query_body) == 2
+
+        all_params = plugin.get_extracted_params_by_source()
+        assert len(all_params) == 4
+
+    def test_deduplicates_params(self):
+        from dimsum.scanner.base_plugin import BaseScanPlugin
+
+        ctx = ScanContext(
+            scan_id=uuid.uuid4(),
+            extracted_parameters=[
+                {"name": "id", "source": "query"},
+                {"name": "id", "source": "query"},  # duplicate
+                {"name": "id", "source": "body"},   # same name, different source
+            ],
+        )
+
+        class DummyPlugin(BaseScanPlugin):
+            async def run(self):
+                return []
+
+        DummyPlugin.meta = MagicMock()
+        plugin = DummyPlugin(ctx, MagicMock())
+
+        result = plugin.get_extracted_params_by_source()
+        assert len(result) == 2  # id:query + id:body

@@ -85,6 +85,69 @@ class ReflectedXSSPlugin(BaseScanPlugin):
                         # One confirmed XSS per parameter is enough
                         break
 
+        # Phase 3: Fuzz parameters discovered by source analysis
+        findings.extend(await self._fuzz_extracted_params())
+
+        return findings
+
+    async def _fuzz_extracted_params(self) -> list[ScanFinding]:
+        """Test parameters extracted from source code analysis."""
+        findings: list[ScanFinding] = []
+        extracted = self.get_extracted_params_by_source("query", "body", "path")
+        if not extracted:
+            return findings
+
+        for url in self.get_target_urls():
+            for ep in extracted:
+                param_name = ep["name"]
+                param_source = ep.get("source", "query")
+
+                # Canary test
+                canary = f"{XSS_CANARY_PREFIX}{secrets.token_hex(4)}"
+                if param_source == "body":
+                    resp = await self.http.post(url, data={param_name: canary})
+                else:
+                    resp = await self.http.get(self._inject_param(url, param_name, canary))
+
+                if resp is None or canary not in resp.text:
+                    continue
+
+                method = "POST" if param_source == "body" else "GET"
+
+                for payload in XSS_BASIC_PAYLOADS:
+                    if param_source == "body":
+                        resp = await self.http.post(url, data={param_name: payload})
+                    else:
+                        resp = await self.http.get(self._inject_param(url, param_name, payload))
+
+                    if resp is None:
+                        continue
+                    if self._is_payload_reflected(payload, resp.text):
+                        confidence = self._determine_confidence(payload, resp.text)
+                        findings.append(ScanFinding(
+                            plugin_id=self.meta.plugin_id,
+                            title=f"Reflected XSS in '{param_name}' parameter (source analysis)",
+                            description=(
+                                f"The parameter '{param_name}' (found via source analysis) reflects "
+                                f"user input without proper sanitization."
+                            ),
+                            severity=Severity.HIGH,
+                            confidence=confidence,
+                            url=url,
+                            method=method,
+                            parameter=param_name,
+                            payload=payload,
+                            evidence=self._extract_evidence(payload, resp.text),
+                            cwe_id=79,
+                            cvss_score=6.1,
+                            remediation=(
+                                "Encode all user-supplied input before including it in HTML output. "
+                                "Use context-aware output encoding."
+                            ),
+                            source_file=ep.get("file", ""),
+                            source_line=ep.get("line"),
+                        ))
+                        break
         return findings
 
     @staticmethod
